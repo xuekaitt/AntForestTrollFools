@@ -1,0 +1,13 @@
+Package: com.vknote.antmanor
+Name: AntManorPort
+Version: 3.3.0
+Description: 蚂蚁庄园自动化与家庭活动期亲密度助手（仅庄园，不含蚂蚁森林）
+Section: Tweaks
+Depends: firmware (>= 14.0), mobilesubstrate
+Conflicts: com.vknote.antforest
+Replaces: com.vknote.antforest
+Priority: optional
+Architecture: iphoneos-arm
+Author: walt-chenp
+Maintainer: walt-chenp
+Homepage: https://github.com/walt-chenp/AntForestTrollFools

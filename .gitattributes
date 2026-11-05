@@ -1,0 +1,9 @@
+# 统一换行符，避免 Windows 提交的 CRLF 导致 macOS CI 中的 sh/Makefile 解析失败
+* text=auto
+Makefile text eol=lf
+*.sh text eol=lf
+*.m text eol=lf
+*.h text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf

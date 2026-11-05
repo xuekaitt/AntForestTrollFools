@@ -1,0 +1,16 @@
+{
+  "_说明": "复制到支付宝沙盒 Documents/AntManor/manor-config.json 后生效；留空的接口字段表示未抓包确认，插件不会发起请求。",
+  "activityEnabled": true,
+  "activityStartDate": "",
+  "activityEndDate": "",
+  "dailyTaskLimit": 10,
+  "dailyIntimacyCap": 0,
+  "minRequestInterval": 45,
+  "topNThreshold": 2000000,
+  "familyTaskOperationType": "",
+  "familyTaskRequestData": "",
+  "familyTaskClaimOperationType": "",
+  "familyTaskClaimRequestData": "",
+  "rankOperationType": "",
+  "rankRequestData": ""
+}

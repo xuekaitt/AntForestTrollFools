@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">庄园家庭亲密度助手</string>
+    <string name="accessibility_label">庄园亲密度自动化</string>
+    <string name="accessibility_description">用于读取并操作支付宝「蚂蚁庄园 · 家庭」页面，按本地规则完成亲密度任务。仅在本机运行，不联网、不上传任何数据；遇到验证码或风控页面立即停止。</string>
+
+    <string name="guide_title">使用前需要手动完成 5 步</string>
+    <string name="guide_body">1. 打开系统「无障碍」设置，找到「庄园亲密度自动化」并手动开启（应用无法也不应自动开启）。\n2. 若开关为灰色或提示「受限制的设置」：进入 系统设置 → 应用 → 庄园家庭亲密度助手 → 右上角菜单 → 允许受限制的设置，再回来开启。\n3. 允许本应用发送通知，用于显示运行状态。\n4. 将本应用加入电池优化白名单，避免后台被系统杀死。\n5. 支付宝需已登录，并停留在蚂蚁庄园页面。完成后返回本页，打开总开关，再点击「开始运行」。</string>
+    <string name="service_not_enabled">无障碍服务：未开启</string>
+    <string name="service_enabled">无障碍服务：已开启</string>
+    <string name="service_connected">无障碍服务：已连接</string>
+    <string name="open_accessibility">打开系统无障碍设置</string>
+    <string name="ignore_battery">加入电池优化白名单</string>
+    <string name="master_switch">总开关（默认关闭，需手动开启）</string>
+    <string name="start_run">开始运行</string>
+    <string name="stop_run">停止</string>
+    <string name="open_settings">参数设置</string>
+    <string name="clear_logs">清空日志</string>
+    <string name="export_snapshot">导出当前界面节点快照（校准用）</string>
+    <string name="toast_snapshot_exported">已导出快照：%1$s</string>
+    <string name="toast_snapshot_failed">导出失败：请先开启无障碍服务并停留在支付宝界面</string>
+
+    <string name="section_status">运行状态</string>
+    <string name="section_today">今日数据</string>
+    <string name="section_activity">活动与排名</string>
+    <string name="section_logs">本地日志（仅保存在本机，自动截断）</string>
+
+    <string name="label_intimacy">今日亲密度</string>
+    <string name="label_tasks">今日任务</string>
+    <string name="label_activity">活动</string>
+    <string name="label_rank">当前排名</string>
+    <string name="label_topn_main">前 200 万判断</string>
+    <string name="label_last_run">最近一次运行</string>
+
+    <string name="value_unknown">未获取</string>
+    <string name="value_none">尚未运行</string>
+
+    <string name="settings_title">参数设置</string>
+    <string name="settings_desc">所有参数仅保存在本机 SharedPreferences。修改后需重新点击「开始运行」生效。</string>
+    <string name="settings_master_note">总开关在主页面控制，默认关闭。</string>
+    <string name="label_execution_level">任务执行力度</string>
+    <string name="level_safe">安全模式（仅领取已有奖励，不自动进入任务页）</string>
+    <string name="level_standard">标准模式（自动进入浏览/签到类任务，跳过支付/捐赠类）</string>
+    <string name="label_auto_navigate">自动从支付宝首页进入蚂蚁庄园与家庭页</string>
+    <string name="label_daily_task_limit">每日任务上限（1-50）</string>
+    <string name="label_daily_cap">每日亲密度上限（0 = 不限制）</string>
+    <string name="label_min_interval">最小操作间隔（秒，2-60；实际会额外加最多 1/3 随机抖动）</string>
+    <string name="label_task_dwell">任务页停留秒数（3-60）</string>
+    <string name="label_start_date">活动开始日期（yyyy-MM-dd，可留空）</string>
+    <string name="label_end_date">活动结束日期（yyyy-MM-dd，可留空）</string>
+    <string name="label_topn">前排阈值（默认 2000000）</string>
+    <string name="label_scan_interval">界面扫描间隔（毫秒，800-5000）</string>
+    <string name="label_page_timeout">页面等待超时（秒，5-120）</string>
+    <string name="label_max_steps">单次运行最大步数（10-1000）</string>
+    <string name="label_log_lines">日志保留条数（50-500）</string>
+    <string name="save">保存</string>
+    <string name="restore_defaults">恢复默认</string>
+
+    <string name="notification_channel_name">运行状态</string>
+    <string name="notification_title">庄园亲密度助手</string>
+    <string name="notify_permission_hint">请允许通知，否则无法显示运行状态。</string>
+    <string name="accessibility_hint">请先在系统设置中手动开启「庄园亲密度自动化」无障碍服务</string>
+    <string name="toast_saved">已保存</string>
+    <string name="toast_invalid_number">存在非法数字，请检查输入</string>
+    <string name="toast_invalid_date">日期格式应为 yyyy-MM-dd</string>
+    <string name="toast_started">已请求启动</string>
+    <string name="toast_stopped">已停止</string>
+    <string name="toast_service_off">无障碍服务未连接，请先手动开启</string>
+</resources>

@@ -1,0 +1,10 @@
+.DS_Store
+build/
+dist/
+Packages/
+*.dylib
+manor-config.json
+config/manor-config.json
+*.local.json
+.refs/
+.toolchain/
