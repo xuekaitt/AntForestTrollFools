@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "[check] 关键文件..."
-for f in PortEntry.m antforest/AntManorManager.m antforest/AntManorIntimacy.m antforest/AntManorManager.h antforest/AntManorIntimacy.h; do
+for f in PortEntry.m antforest/AntManorManager.m antforest/AntManorIntimacy.m antforest/AntManorCapture.m antforest/AntManorManager.h antforest/AntManorIntimacy.h antforest/AntManorCapture.h; do
   test -f "$f" || { echo "缺少 $f"; exit 1; }
 done
 
@@ -35,5 +35,11 @@ grep -q 'familyTaskOperationType = @""' antforest/AntManorIntimacy.m
 
 echo "[check] 敏感配置必须被忽略..."
 grep -q "manor-config.json" .gitignore
+
+echo "[check] 抓包模块必须只写本地，不得联网..."
+if grep -E "NSURLSession|NSURLConnection|CFStream|connectToHost" antforest/AntManorCapture.m >/dev/null 2>&1; then
+  echo "抓包模块存在联网调用"
+  exit 1
+fi
 
 echo "[check] 通过"

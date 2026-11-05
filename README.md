@@ -13,7 +13,7 @@
 需要 macOS + Xcode Command Line Tools（Windows 无法编译 iOS dylib）。
 
 ```sh
-make                 # 生成 build/AntManorPort-v3.3.0.dylib（arm64 + arm64e）
+make                 # 生成 build/AntManorPort-v3.4.0.dylib（arm64 + arm64e）
 make test            # 裁剪/残留静态自检
 make package         # 生成 dist/*.deb 与 TrollFools 可用 zip
 ```
@@ -35,10 +35,10 @@ make package         # 生成 dist/*.deb 与 TrollFools 可用 zip
 
 - Runner：`macos-latest`，优先 `maxim-lobanov/setup-xcode` 选择 Xcode `15.4`；若镜像已移除该版本，自动回退到默认 Xcode。
 - 产物（Actions Run 页面 Artifacts，保留 30 天）：
-  - `AntManorPort-v3.3.0-build<run_number>-dylib`：`build/*.dylib`
-  - `AntManorPort-v3.3.0-build<run_number>-packages`：`dist/*.deb`、`dist/*-TrollFools.zip`
+  - `AntManorPort-v3.4.0-build<run_number>-dylib`：`build/*.dylib`
+  - `AntManorPort-v3.4.0-build<run_number>-packages`：`dist/*.deb`、`dist/*-TrollFools.zip`
 - `make package` 失败不会中断构建，至少保留 dylib 产物（日志会有 warning）。
-- Tag Release 使用 `softprops/action-gh-release`，依赖 workflow 中的 `permissions: contents: write`；建议 tag 与 Makefile 的 `VERSION` 保持一致（如 `v3.3.0`），否则 Release 名称与包内版本可能不同。
+- Tag Release 使用 `softprops/action-gh-release`，依赖 workflow 中的 `permissions: contents: write`；建议 tag 与 Makefile 的 `VERSION` 保持一致（如 `v3.4.0`），否则 Release 名称与包内版本可能不同。
 - deb 打包优先使用 Homebrew 的 `dpkg-deb`；不可用时 `scripts/package.sh` 自动回退到 `ar + tar`。
 - CI 只做构建与打包，不需要任何账号 cookie/token；仓库中也没有敏感配置。
 
@@ -52,7 +52,7 @@ make package  # 等同于 CI 的 Package（需先 make）
 
 ## 安装
 
-1. 用 TrollFools 注入支付宝（Bundle ID：`com.alipay.iphoneclient`），选择 `dist/com.vknote.antmanor_3.3.0_iphoneos-arm.deb` 或 `AntManorPort-v3.3.0-TrollFools.zip`；
+1. 用 TrollFools 注入支付宝（Bundle ID：`com.alipay.iphoneclient`），选择 `dist/com.vknote.antmanor_3.4.0_iphoneos-arm.deb` 或 `AntManorPort-v3.4.0-TrollFools.zip`；
 2. 打开蚂蚁庄园页面，右侧会出现叶子悬浮按钮；
 3. 点击按钮打开「蚂蚁庄园 · 家庭亲密度」面板。
 
@@ -85,6 +85,24 @@ Documents/AntManor/manor-config.json
 
 也可用 `NSUserDefaults` 覆盖，键名为 `manor_cfg_<字段名>`。
 
+## 调试抓包（仅本地）
+
+家庭任务接口需要真实抓包确认。v3.4.0 内置了本地抓包模块：
+
+1. 打开蚂蚁庄园「家庭」页面，点击悬浮叶子进入面板；
+2. 面板 →「调试抓包」开关默认开启；也可点「开始抓包 60 秒」，按提示立即去操作家庭任务；
+3. 60 秒后自动停止；点击「导出抓包文件」通过系统分享面板导出；
+4. 把导出的 **`capture-YYYYMMDD-HHMMSS.ndjson`** 和（如果有）**`family-candidates.ndjson`** 发给开发者分析。
+
+文件位置：`Documents/AntManor/`（面板「复制抓包路径」可直接复制路径）。
+
+- **记录范围**：所有经 `PSDJsBridge _doFlushMessageQueue:url:` 发出的请求，以及 `transformResponseData:` 收到的回包，包含 H5 页面自身发出的 RPC。
+- **格式**：NDJSON，每行一个 JSON，字段为 `ts`、`direction`（req/resp）、`operationType`、`url`、`payload`、`responseSummary`；`responseSummary` 包含顶层 key、`resData`/`data`/`result` 包装层、包装层 key 与关键字段值。
+- **容量**：单文件上限 5MB，超过自动滚动到新的时间戳文件；主日志最多保留 10 个文件，候选日志最多 5 个。
+- **FAMILY_CANDIDATE**：回包内容命中 `family`、`intimacy`、`亲密度`、`homeTask`、`activity` 时，面板日志会打印醒目的 `FAMILY_CANDIDATE` 标记，并额外写入 `family-candidates.ndjson`，方便只发这一个文件。
+- **脱敏**：以下字段的值会被掩码或替换，但保留字段名与结构：token、cookie、session 及各类 auth/ticket/secret/signature；手机号；身份证号；银行卡/银行账号；userId/uid/openid/memberId 等用户标识；email；真实姓名；地址。URL 查询参数中的敏感键同样替换为 `***`。单条字符串超过 500 字符会截断并标注长度。
+- **隐私**：抓包只写入 App 沙盒本地文件，不联网、不上传；请勿把包含账号信息的原始文件公开发布。
+
 ## 能力说明
 
 - **庄园自动化**：每日签到、小课堂答题、防重复投喂、收取肥料、浏览类任务与领奖；跳过公益捐款、游戏充值、支付类任务。
@@ -106,6 +124,7 @@ Documents/AntManor/manor-config.json
 PortEntry.m                     注入入口、悬浮按钮、面板、H5/RPC Hook
 antforest/AntManorManager.{h,m} 庄园桥接、日常自动化、回包处理
 antforest/AntManorIntimacy.{h,m} 家庭亲密度配置、任务节流、进度、排名
+antforest/AntManorCapture.{h,m}  本地 RPC 抓包、脱敏、NDJSON、FAMILY_CANDIDATE
 antforest/Headers/PSDJsBridge   仅保留注入所需的 Bridge 头文件
 antforest/Package                deb 打包骨架
 config/                         亲密度配置模板（不含任何账号信息）

@@ -4,6 +4,7 @@
 //
 
 #import "AntManorManager.h"
+#import "AntManorCapture.h"
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 
@@ -91,6 +92,9 @@ static NSDictionary *ManorPayloadFromResponse(NSDictionary *dict) {
         };
         _intimacy.requestHandler = ^(NSString *operationType, NSArray *requestData, NSString *callbackPrefix) {
             [weakSelf sendManorRPC:operationType requestData:requestData callbackPrefix:callbackPrefix];
+        };
+        [AntManorCapture sharedInstance].logHandler = ^(NSString *message) {
+            [weakSelf addLog:message];
         };
         [self loadFoodDoneState];
     }

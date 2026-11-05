@@ -10,6 +10,7 @@
 #import <objc/message.h>
 #import "AntManorManager.h"
 #import "AntManorIntimacy.h"
+#import "AntManorCapture.h"
 
 static const NSInteger AntManorButtonTag = 0x414E544D;
 static NSString *const AntManorButtonXKey = @"manor_button_x";
@@ -61,6 +62,14 @@ static UIViewController *ManorControllerFromBridge(id bridge) {
 @property (nonatomic, copy) NSArray<NSString *> *summaryLines;
 @end
 
+@interface AntManorPanel ()
+- (void)captureToggled:(UISwitch *)sender;
+- (void)startTimedCaptureAction;
+- (void)exportCaptureAction;
+- (void)copyCapturePathAction;
+- (void)showMessage:(NSString *)title message:(NSString *)message;
+@end
+
 @implementation AntManorPanel
 
 - (void)viewDidLoad {
@@ -94,13 +103,14 @@ static UIViewController *ManorControllerFromBridge(id bridge) {
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4;
+    return 5;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return self.summaryLines.count ?: 1;
     if (section == 1) return 2;
     if (section == 2) return 3;
+    if (section == 3) return 4;
     NSArray *logs = [AntManorManager sharedInstance].logRecord;
     return logs.count ?: 1;
 }
@@ -110,6 +120,7 @@ static UIViewController *ManorControllerFromBridge(id bridge) {
         case 0: return @"今日状态";
         case 1: return @"自动化开关";
         case 2: return @"操作";
+        case 3: return @"调试抓包（仅本地）";
         default: return @"运行日志";
     }
 }
@@ -148,9 +159,32 @@ static UIViewController *ManorControllerFromBridge(id bridge) {
         cell.accessoryView = toggle;
     } else if (indexPath.section == 2) {
         cell.textLabel.textColor = [UIColor colorWithRed:0.07 green:0.36 blue:0.20 alpha:1.0];
+        cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         if (indexPath.row == 0) cell.textLabel.text = @"查询当前亲密度排名";
         else if (indexPath.row == 1) cell.textLabel.text = @"重新加载亲密度配置";
         else cell.textLabel.text = @"清空日志";
+    } else if (indexPath.section == 3) {
+        AntManorCapture *capture = [AntManorCapture sharedInstance];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"调试抓包（NDJSON）";
+            UISwitch *toggle = [[UISwitch alloc] init];
+            toggle.onTintColor = [UIColor colorWithRed:0.07 green:0.36 blue:0.20 alpha:1.0];
+            toggle.on = capture.enabled;
+            [toggle addTarget:self action:@selector(captureToggled:) forControlEvents:UIControlEventValueChanged];
+            cell.accessoryView = toggle;
+            cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
+            cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %ld 条 · %.2f MB",
+                                         capture.enabled ? @"开" : @"关",
+                                         (long)capture.recordCount,
+                                         capture.currentFileSize / 1048576.0];
+        } else {
+            cell.textLabel.textColor = [UIColor colorWithRed:0.07 green:0.36 blue:0.20 alpha:1.0];
+            cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+            if (indexPath.row == 1) cell.textLabel.text = @"开始抓包 60 秒";
+            else if (indexPath.row == 2) cell.textLabel.text = @"导出抓包文件";
+            else cell.textLabel.text = @"复制抓包路径";
+        }
     } else {
         NSArray *logs = manager.logRecord;
         cell.textLabel.font = [UIFont systemFontOfSize:12];
@@ -166,6 +200,12 @@ static UIViewController *ManorControllerFromBridge(id bridge) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (indexPath.section == 3) {
+        if (indexPath.row == 1) [self startTimedCaptureAction];
+        else if (indexPath.row == 2) [self exportCaptureAction];
+        else if (indexPath.row == 3) [self copyCapturePathAction];
+        return;
+    }
     if (indexPath.section != 2) return;
 
     AntManorManager *manager = [AntManorManager sharedInstance];
@@ -200,6 +240,62 @@ static UIViewController *ManorControllerFromBridge(id bridge) {
     [manager.intimacy reloadConfig];
     [manager addLog:[NSString stringWithFormat:@"家庭亲密度自动化：%@", sender.on ? @"开启" : @"关闭"]];
     [self reloadPanel];
+}
+
+- (void)captureToggled:(UISwitch *)sender {
+    [AntManorCapture sharedInstance].enabled = sender.on;
+    [self reloadPanel];
+}
+
+- (void)startTimedCaptureAction {
+    __weak typeof(self) weakSelf = self;
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"开始抓包 60 秒"
+                                                                   message:@"请现在去蚂蚁庄园「家庭」页面操作任务。60 秒后自动停止，随后点击「导出抓包文件」，把导出的文件发给开发者分析。"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"开始" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        AntManorPanel *panel = weakSelf;
+        if (!panel) return;
+        [[AntManorCapture sharedInstance] startTimedCapture:60 completion:^{
+            [panel reloadPanel];
+        }];
+        [panel reloadPanel];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)exportCaptureAction {
+    NSArray<NSURL *> *urls = [[AntManorCapture sharedInstance] exportFileURLs];
+    if (!urls.count) {
+        [self showMessage:@"暂无抓包文件"
+                    message:@"请先开启抓包并操作蚂蚁庄园「家庭」页面，或点击「开始抓包 60 秒」后再导出。"];
+        return;
+    }
+    UIActivityViewController *controller = [[UIActivityViewController alloc] initWithActivityItems:urls applicationActivities:nil];
+    UIPopoverPresentationController *popover = controller.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = self.view;
+        popover.sourceRect = CGRectMake(CGRectGetMidX(self.view.bounds), CGRectGetMidY(self.view.bounds), 1, 1);
+        popover.permittedArrowDirections = 0;
+    }
+    [self presentViewController:controller animated:YES completion:^{
+        [self.tableView reloadData];
+    }];
+}
+
+- (void)copyCapturePathAction {
+    NSString *path = [[AntManorCapture sharedInstance] exportPathDescription];
+    UIPasteboard.generalPasteboard.string = path ?: @"";
+    [self showMessage:@"抓包路径已复制"
+                message:[NSString stringWithFormat:@"%@\n\n可用 Filza 或文件 App 进入该目录；导出时直接分享 ndjson 文件即可。", path ?: @""]];
+}
+
+- (void)showMessage:(NSString *)title message:(NSString *)message {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
+                                                                   message:message
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end
@@ -321,6 +417,8 @@ static id PortTransformResponseData(id self, SEL _cmd, id value) {
     NSDictionary *dict = [value isKindOfClass:NSDictionary.class] ? value : nil;
     NSString *bridgeUrl = [manager effectiveUrlForBridge:self];
 
+    [[AntManorCapture sharedInstance] recordResponse:value url:bridgeUrl];
+
     BOOL isManor = dict ? [AntManorManager isManorResponse:dict] : NO;
     if (!isManor && bridgeUrl.length && [AntManorManager isManorURL:[NSURL URLWithString:bridgeUrl]]) isManor = YES;
 
@@ -358,6 +456,9 @@ static id PortTransformResponseData(id self, SEL _cmd, id value) {
 }
 
 static void PortDoFlushMessageQueue(id self, SEL _cmd, id message, id url) {
+    @try {
+        [[AntManorCapture sharedInstance] recordRequestMessage:message url:url];
+    } @catch (NSException *exception) {}
     @try {
         NSString *messageString = nil;
         if ([message isKindOfClass:NSString.class]) {
