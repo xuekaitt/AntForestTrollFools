@@ -138,6 +138,12 @@ static NSDictionary *ManorPayloadFromResponse(NSDictionary *dict) {
     if (resData[@"familyInfo"] || dict[@"familyInfo"]) return YES;
     if (resData[@"familyActivity"] || dict[@"familyActivity"]) return YES;
     if (resData[@"familyTaskList"] || dict[@"familyTaskList"]) return YES;
+    // 抓包实测：家庭页任务列表直接放在顶层 familyTasks，且带活动/亲密度字段
+    if (resData[@"familyTasks"] || dict[@"familyTasks"]) return YES;
+    if (resData[@"familyActivityIntimateNumber"] || dict[@"familyActivityIntimateNumber"]) return YES;
+    if (resData[@"familyDailyIntimateNumber"] || dict[@"familyDailyIntimateNumber"]) return YES;
+    if (resData[@"familyIntimateAwardGear"] || dict[@"familyIntimateAwardGear"]) return YES;
+    if (resData[@"activityInfo"] || dict[@"activityInfo"]) return YES;
     if (resData[@"intimacyInfo"] || dict[@"intimacyInfo"]) return YES;
     return NO;
 }

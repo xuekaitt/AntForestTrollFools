@@ -41,6 +41,8 @@ static NSInteger ManorIntimacyIntegerValue(id value) {
 @property (nonatomic, strong) NSMutableSet<NSString *> *todaySubmittedKeys;
 @property (nonatomic, assign) NSTimeInterval lastRequestTime;
 @property (nonatomic, strong) NSMutableSet<NSString *> *notifiedMissingKeys;
+- (void)observeFamilyState:(NSDictionary *)response;
+- (NSString *)familyTaskSummaryForList:(NSArray *)taskList;
 @end
 
 @implementation AntManorIntimacy
@@ -73,6 +75,9 @@ static NSInteger ManorIntimacyIntegerValue(id value) {
         _rankRequestDataJSON = @"";
         _statusNote = @"";
         _lastRankText = @"";
+        _observedActivityWindowText = @"";
+        _observedRankGearText = @"";
+        _observedFamilyTaskText = @"";
         [self reloadConfig];
         [self resetDailyIfNeeded];
     }
@@ -119,10 +124,12 @@ static NSInteger ManorIntimacyIntegerValue(id value) {
 
     if (!_activityEnabled) {
         self.statusNote = [NSString stringWithFormat:@"亲密度自动化未启用（activityEnabled=false，配置：%@）", path];
+    } else if (!_familyTaskOperationType.length) {
+        self.statusNote = @"家庭任务执行接口未捕获：familyTasks 回包可解析，但请求 operationType 缺失，需再抓一次请求侧";
     } else if (!_rankOperationType.length) {
-        self.statusNote = [NSString stringWithFormat:@"排名接口未配置（需抓包），配置：%@", path];
+        self.statusNote = @"家庭任务接口已配置；排名数据由家庭页下发（排名接口未捕获）";
     } else {
-        self.statusNote = @"排名接口已配置";
+        self.statusNote = @"家庭任务与排名接口已配置";
     }
 }
 
@@ -230,12 +237,63 @@ static NSString *ManorTaskText(NSDictionary *task) {
 }
 
 static NSInteger ManorTaskExpectedIntimacy(NSDictionary *task) {
+    // 抓包结构：awardType=FAMILY_INTIMACY 时，亲密度数量在 awardCount
+    NSString *awardType = [ManorIntimacyStringValue(task[@"awardType"]) uppercaseString];
+    if ([awardType containsString:@"FAMILY_INTIMACY"] || [awardType containsString:@"INTIMACY"]) {
+        NSInteger amount = ManorIntimacyIntegerValue(task[@"awardCount"]);
+        if (amount > 0) return amount;
+    }
     for (NSString *key in @[@"intimacy", @"intimacyCount", @"intimacyAward", @"awardIntimacy", @"addIntimacy"]) {
         id value = task[key];
         NSInteger amount = ManorIntimacyIntegerValue(value);
         if (amount > 0) return amount;
     }
     return 0;
+}
+
+// 抓包结构：extend 是 JSON 字符串，如 {"canDo":"false"}；未出现时默认可执行。
+static BOOL ManorTaskCanDo(NSDictionary *task) {
+    id extend = task[@"extend"];
+    NSString *text = nil;
+    if ([extend isKindOfClass:NSString.class]) {
+        text = extend;
+    } else if ([extend isKindOfClass:NSDictionary.class]) {
+        NSData *data = [NSJSONSerialization dataWithJSONObject:extend options:0 error:nil];
+        if (data.length) text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    }
+    if (text.length) {
+        NSData *data = [text dataUsingEncoding:NSUTF8StringEncoding];
+        id json = data.length ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        id canDo = [json isKindOfClass:NSDictionary.class] ? ((NSDictionary *)json)[@"canDo"] : nil;
+        if (canDo) {
+            if ([canDo isKindOfClass:NSNumber.class]) return [canDo boolValue];
+            NSString *value = [ManorIntimacyStringValue(canDo) lowercaseString];
+            if ([value isEqualToString:@"false"] || [value isEqualToString:@"no"] || [value isEqualToString:@"0"]) return NO;
+            return YES;
+        }
+    }
+    id direct = task[@"canDo"];
+    if (direct) {
+        if ([direct isKindOfClass:NSNumber.class]) return [direct boolValue];
+        NSString *value = [ManorIntimacyStringValue(direct) lowercaseString];
+        if ([value isEqualToString:@"false"] || [value isEqualToString:@"0"]) return NO;
+    }
+    return YES;
+}
+
+static NSString *ManorDateFromMilliseconds(id value) {
+    double milliseconds = [value doubleValue];
+    if (milliseconds <= 0) return @"";
+    if (milliseconds < 1000000000000.0) milliseconds *= 1000.0;
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:milliseconds / 1000.0];
+    static NSDateFormatter *formatter = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        formatter = [[NSDateFormatter alloc] init];
+        formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.dateFormat = @"yyyy-MM-dd";
+    });
+    return [formatter stringFromDate:date];
 }
 
 static BOOL ManorTaskLooksLikeIntimacy(NSDictionary *task, NSString *source) {
@@ -276,6 +334,11 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
         if ([status isEqualToString:@"RECEIVED"] || [status isEqualToString:@"ALREADY_RECEIVED"] || [status isEqualToString:@"COMPLETED"]) continue;
         if ([status isEqualToString:@"FINISHED"] || [status isEqualToString:@"WAIT_RECEIVE"] || [status isEqualToString:@"WAIT_RECEIVE_AWARD"]) {
             [self claimTask:task source:source];
+            continue;
+        }
+        if (!ManorTaskCanDo(task)) {
+            [self notifyMissingOnce:[NSString stringWithFormat:@"canDo-%@-%@", source, [self taskIdentifierForTask:task]]
+                            message:[NSString stringWithFormat:@"家庭任务暂不可执行（extend.canDo=false）：%@", [self taskIdentifierForTask:task]]];
             continue;
         }
         [self submitTask:task source:source];
@@ -379,11 +442,12 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
             requestData = [self requestDataFromTemplate:template task:task];
         }
         if (!requestData) {
-            requestData = @[@{@"taskId": identifier, @"requestType": @"NORMAL", @"sceneCode": @"ANTFARM", @"source": @"H5"}];
+            requestData = @[@{@"taskId": identifier, @"requestType": @"NORMAL", @"sceneCode": @"ANTFARM", @"source": @"H5", @"version": @"1.8.2302070202.46"}];
         }
     } else {
         operationType = @"com.alipay.antfarm.receiveFarmTaskAward";
-        requestData = @[@{@"taskId": identifier, @"requestType": @"NORMAL", @"sceneCode": @"ANTFARM", @"source": @"H5"}];
+        // 与抓包实际请求体一致：requestType/sceneCode/source/taskId/version
+        requestData = @[@{@"taskId": identifier, @"requestType": @"NORMAL", @"sceneCode": @"ANTFARM", @"source": @"H5", @"version": @"1.8.2302070202.46"}];
     }
 
     [self markSubmittedKey:claimKey countTask:NO];
@@ -431,6 +495,8 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
     if (![response isKindOfClass:NSDictionary.class]) return;
     [self resetDailyIfNeeded];
 
+    [self observeFamilyState:response];
+
     NSInteger gained = [self intimacyGainInDictionary:response depth:0];
     if (gained > 0) {
         self.todayGainedIntimacy += gained;
@@ -457,6 +523,83 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
                        (long)self.topNThreshold]];
         }
     }
+}
+
+- (void)observeFamilyState:(NSDictionary *)response {
+    NSDictionary *state = response;
+    for (NSString *key in @[@"resData", @"data", @"result"]) {
+        id value = response[key];
+        if ([value isKindOfClass:NSDictionary.class]) {
+            state = value;
+            break;
+        }
+    }
+
+    NSInteger activityIntimacy = ManorIntimacyIntegerValue(state[@"familyActivityIntimateNumber"]);
+    NSInteger dailyIntimacy = ManorIntimacyIntegerValue(state[@"familyDailyIntimateNumber"]);
+    if (activityIntimacy > 0) self.observedActivityIntimacy = activityIntimacy;
+    if (dailyIntimacy > 0) self.observedFamilyDailyIntimacy = dailyIntimacy;
+
+    NSDictionary *activityInfo = [state[@"activityInfo"] isKindOfClass:NSDictionary.class] ? state[@"activityInfo"] : nil;
+    if (activityInfo) {
+        NSString *start = ManorDateFromMilliseconds(activityInfo[@"activityStartTime"]);
+        NSString *end = ManorDateFromMilliseconds(activityInfo[@"activityEndTime"]);
+        if (start.length || end.length) {
+            self.observedActivityWindowText = [NSString stringWithFormat:@"%@ ~ %@",
+                                               start.length ? start : @"?",
+                                               end.length ? end : @"?"];
+        }
+        NSArray *rankList = [activityInfo[@"familyActivityIntimateRankList"] isKindOfClass:NSArray.class] ? activityInfo[@"familyActivityIntimateRankList"] : nil;
+        if (rankList.count) {
+            NSMutableArray *parts = [NSMutableArray array];
+            NSArray *sorted = [rankList sortedArrayUsingComparator:^NSComparisonResult(id a, id b) {
+                NSInteger ga = [a isKindOfClass:NSDictionary.class] ? ManorIntimacyIntegerValue(((NSDictionary *)a)[@"familyActivityRankIntimateGear"]) : 0;
+                NSInteger gb = [b isKindOfClass:NSDictionary.class] ? ManorIntimacyIntegerValue(((NSDictionary *)b)[@"familyActivityRankIntimateGear"]) : 0;
+                if (ga < gb) return NSOrderedAscending;
+                if (ga > gb) return NSOrderedDescending;
+                return NSOrderedSame;
+            }];
+            for (NSDictionary *gear in sorted) {
+                if (![gear isKindOfClass:NSDictionary.class]) continue;
+                NSInteger top = ManorIntimacyIntegerValue(gear[@"familyActivityRankIntimateGear"]);
+                NSInteger score = ManorIntimacyIntegerValue(gear[@"familyActivityRankIntimateGearScore"]);
+                if (top > 0 && score > 0) {
+                    [parts addObject:[NSString stringWithFormat:@"前%ld名需%ld", (long)top, (long)score]];
+                }
+            }
+            if (parts.count) self.observedRankGearText = [parts componentsJoinedByString:@" / "];
+        }
+    }
+
+    NSArray *familyTasks = [state[@"familyTasks"] isKindOfClass:NSArray.class] ? state[@"familyTasks"] : nil;
+    if (familyTasks.count) {
+        self.observedFamilyTaskText = [self familyTaskSummaryForList:familyTasks];
+        if (self.activityEnabled) [self handleTaskList:familyTasks source:@"family"];
+    }
+
+    if (self.observedFamilyTaskText.length || self.observedRankGearText.length) {
+        [self notifyMissingOnce:@"family-state" message:[NSString stringWithFormat:@"家庭页数据：活动亲密度 %ld / 家庭总亲密度 %ld / %@ / %@",
+                                                          (long)self.observedActivityIntimacy,
+                                                          (long)self.observedFamilyDailyIntimacy,
+                                                          self.observedRankGearText.length ? self.observedRankGearText : @"排名线未知",
+                                                          self.observedFamilyTaskText.length ? self.observedFamilyTaskText : @"任务列表未知"]];
+    }
+}
+
+- (NSString *)familyTaskSummaryForList:(NSArray *)taskList {
+    NSInteger total = 0, todo = 0, done = 0, received = 0, blocked = 0;
+    for (id item in taskList) {
+        if (![item isKindOfClass:NSDictionary.class]) continue;
+        total += 1;
+        NSDictionary *task = (NSDictionary *)item;
+        NSString *status = ManorTaskStatus(task);
+        if ([status isEqualToString:@"TODO"] || [status isEqualToString:@"PENDING"] || [status isEqualToString:@"INIT"]) todo += 1;
+        else if ([status isEqualToString:@"FINISHED"] || [status isEqualToString:@"WAIT_RECEIVE"] || [status isEqualToString:@"WAIT_RECEIVE_AWARD"]) done += 1;
+        else if ([status isEqualToString:@"RECEIVED"] || [status isEqualToString:@"COMPLETED"]) received += 1;
+        if (!ManorTaskCanDo(task)) blocked += 1;
+    }
+    return [NSString stringWithFormat:@"家庭任务 %ld 项：待完成 %ld / 待领奖 %ld / 已领取 %ld / 暂不可做 %ld",
+            (long)total, (long)todo, (long)done, (long)received, (long)blocked];
 }
 
 - (NSInteger)intimacyGainInDictionary:(NSDictionary *)dict depth:(NSInteger)depth {
@@ -560,6 +703,8 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
     NSString *window = @"未配置活动期";
     if (self.activityStartDate.length || self.activityEndDate.length) {
         window = [NSString stringWithFormat:@"%@ ~ %@", self.activityStartDate.length ? self.activityStartDate : @"?", self.activityEndDate.length ? self.activityEndDate : @"?"];
+    } else if (self.observedActivityWindowText.length) {
+        window = [NSString stringWithFormat:@"%@（抓包观测）", self.observedActivityWindowText];
     }
     NSString *cap = self.dailyIntimacyCap > 0 ? [NSString stringWithFormat:@"%ld", (long)self.dailyIntimacyCap] : @"未配置";
     NSString *rank = self.lastRankText.length ? self.lastRankText : @"未查询";
@@ -568,14 +713,25 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
                               : [NSString stringWithFormat:@"否（前 %ld 名外）", (long)self.topNThreshold])
         : @"未知";
 
-    return @[
+    NSMutableArray<NSString *> *lines = [NSMutableArray arrayWithArray:@[
         [NSString stringWithFormat:@"活动期：%@（%@）", window, self.activityActive ? @"进行中" : @"未激活"],
         [NSString stringWithFormat:@"今日亲密度：+%ld / 上限 %@", (long)self.todayGainedIntimacy, cap],
         [NSString stringWithFormat:@"今日任务：%ld/%ld，请求 %ld 次", (long)self.todayTaskCount, (long)self.dailyTaskLimit, (long)self.todayRequestCount],
         [NSString stringWithFormat:@"排名：%@", rank],
         [NSString stringWithFormat:@"前 %ld 万名：%@", (long)self.topNThreshold, topN],
         [NSString stringWithFormat:@"状态：%@", self.statusNote.length ? self.statusNote : @"待运行"],
-    ];
+    ]];
+    if (self.observedActivityIntimacy > 0 || self.observedFamilyDailyIntimacy > 0) {
+        [lines addObject:[NSString stringWithFormat:@"家庭亲密度：活动 %ld / 今日 %ld",
+                          (long)self.observedActivityIntimacy, (long)self.observedFamilyDailyIntimacy]];
+    }
+    if (self.observedRankGearText.length) {
+        [lines addObject:[NSString stringWithFormat:@"排名线：%@", self.observedRankGearText]];
+    }
+    if (self.observedFamilyTaskText.length) {
+        [lines addObject:self.observedFamilyTaskText];
+    }
+    return lines;
 }
 
 #pragma mark - 辅助

@@ -321,7 +321,8 @@ static NSDictionary *ManorResponseSummary(id original, id sanitized) {
         NSArray *wrapperKeys = wrapper ? wrapper.allKeys : topKeys;
         NSMutableDictionary *highlights = [NSMutableDictionary dictionary];
         for (NSString *key in @[@"operationType", @"resultCode", @"resultStatus", @"success",
-                                @"errorCode", @"errorMsg", @"memo", @"responseId", @"callbackId"]) {
+                                @"errorCode", @"errorMsg", @"memo", @"responseId", @"callbackId",
+                                @"ariverRpcTraceId"]) {
             id value = dict[key];
             if (value && ([value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class])) {
                 highlights[key] = value;
@@ -526,6 +527,7 @@ static NSArray<NSString *> *ManorFamilyMatches(id payload, NSString *operationTy
 @property (nonatomic, strong) ManorCaptureStream *mainStream;
 @property (nonatomic, strong) ManorCaptureStream *familyStream;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *callbackOperations;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *recentCallbackIds;
 @property (nonatomic, assign) NSUInteger timedToken;
 @property (nonatomic, assign) BOOL loggedSerializationFailure;
 @end
@@ -547,6 +549,7 @@ static NSArray<NSString *> *ManorFamilyMatches(id payload, NSString *operationTy
     self = [super init];
     if (self) {
         _callbackOperations = [NSMutableDictionary dictionary];
+        _recentCallbackIds = [NSMutableDictionary dictionary];
         NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
         _enabled = [defaults objectForKey:kManorCaptureEnabledKey] ? [defaults boolForKey:kManorCaptureEnabledKey] : YES;
 
@@ -681,12 +684,23 @@ static NSArray<NSString *> *ManorFamilyMatches(id payload, NSString *operationTy
         if (!operationType.length) operationType = @"unknown";
 
         NSString *callbackId = ManorFindStringValue(item, @"callbackId", 0);
+        BOOL duplicate = NO;
         if (callbackId.length) {
+            NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
             @synchronized (self) {
+                NSNumber *seenAt = self.recentCallbackIds[callbackId];
+                if (seenAt && (now - seenAt.doubleValue) < 3.0) {
+                    duplicate = YES;
+                } else {
+                    if (self.recentCallbackIds.count > 500) [self.recentCallbackIds removeAllObjects];
+                    self.recentCallbackIds[callbackId] = @(now);
+                }
                 if (self.callbackOperations.count > 500) [self.callbackOperations removeAllObjects];
                 self.callbackOperations[callbackId] = operationType;
             }
         }
+        // 同一请求可能同时经过 _doFlushMessageQueue 与 _dispatchMessage，按 callbackId 去重
+        if (duplicate) continue;
 
         NSDictionary *record = @{
             @"ts": timestamp ?: @"",

@@ -2,7 +2,7 @@
 SDK = $(shell xcrun --sdk iphoneos --show-sdk-path)
 CLANG = $(shell xcrun --sdk iphoneos --find clang)
 LIPO = $(shell xcrun --sdk iphoneos --find lipo)
-VERSION := v3.4.0
+VERSION := v3.5.0
 TARGET := build/AntManorPort-$(VERSION).dylib
 SOURCES := PortEntry.m antforest/AntManorManager.m antforest/AntManorIntimacy.m antforest/AntManorCapture.m
 HEADERS := $(wildcard antforest/*.h) $(wildcard antforest/Headers/PSDJsBridge/*.h)

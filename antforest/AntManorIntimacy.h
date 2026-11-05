@@ -45,6 +45,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly) BOOL lastRankInTopN;
 @property (nonatomic, copy) NSString *statusNote;
 
+// 家庭页下发的真实观测值（来源：抓包 180020380000000271/familyFeed.html）
+@property (nonatomic, assign) NSInteger observedActivityIntimacy;   // familyActivityIntimateNumber
+@property (nonatomic, assign) NSInteger observedFamilyDailyIntimacy; // familyDailyIntimateNumber
+@property (nonatomic, copy) NSString *observedActivityWindowText;   // activityInfo 起止日期
+@property (nonatomic, copy) NSString *observedRankGearText;         // 排名线（前 N 名所需亲密度）
+@property (nonatomic, copy) NSString *observedFamilyTaskText;       // familyTasks 概览
+
 // 由 AntManorManager 注入的能力
 @property (nonatomic, copy, nullable) void (^requestHandler)(NSString *operationType, NSArray *requestData, NSString *callbackPrefix);
 @property (nonatomic, copy, nullable) void (^logHandler)(NSString *message);

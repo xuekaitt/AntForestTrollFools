@@ -394,6 +394,7 @@ static UIButton *ManorEnsureButton(UIViewController *controller) {
 static IMP originalViewDidAppear = NULL;
 static IMP originalTransformResponseData = NULL;
 static IMP originalDoFlushMessageQueue = NULL;
+static IMP originalDispatchMessage = NULL;
 
 static void PortViewDidAppear(UIViewController *self, SEL _cmd, BOOL animated) {
     if (originalViewDidAppear) ((void (*)(id, SEL, BOOL))originalViewDidAppear)(self, _cmd, animated);
@@ -455,10 +456,7 @@ static id PortTransformResponseData(id self, SEL _cmd, id value) {
     return value;
 }
 
-static void PortDoFlushMessageQueue(id self, SEL _cmd, id message, id url) {
-    @try {
-        [[AntManorCapture sharedInstance] recordRequestMessage:message url:url];
-    } @catch (NSException *exception) {}
+static void ManorUpdateLastOperationType(id message) {
     @try {
         NSString *messageString = nil;
         if ([message isKindOfClass:NSString.class]) {
@@ -479,8 +477,28 @@ static void PortDoFlushMessageQueue(id self, SEL _cmd, id message, id url) {
             }
         }
     } @catch (NSException *exception) {}
+}
+
+static void PortDoFlushMessageQueue(id self, SEL _cmd, id message, id url) {
+    @try {
+        [[AntManorCapture sharedInstance] recordRequestMessage:message url:url];
+    } @catch (NSException *exception) {}
+    ManorUpdateLastOperationType(message);
     if (originalDoFlushMessageQueue) {
         ((void (*)(id, SEL, id, id))originalDoFlushMessageQueue)(self, _cmd, message, url);
+    }
+}
+
+// 家庭页的请求可能走 fast-mode 的 message dispatch（不经 _doFlushMessageQueue），
+// 这里补一层，确保请求侧也能被抓到；同 callbackId 由抓包模块去重。
+static void PortDispatchMessage(id self, SEL _cmd, id message) {
+    @try {
+        NSString *bridgeUrl = [[AntManorManager sharedInstance] effectiveUrlForBridge:self];
+        [[AntManorCapture sharedInstance] recordRequestMessage:message url:bridgeUrl];
+    } @catch (NSException *exception) {}
+    ManorUpdateLastOperationType(message);
+    if (originalDispatchMessage) {
+        ((void (*)(id, SEL, id))originalDispatchMessage)(self, _cmd, message);
     }
 }
 
@@ -546,6 +564,7 @@ static void InstallManorHooks(void) {
         if (bridgeClass) {
             InstallMethodHook(bridgeClass, @selector(transformResponseData:), (IMP)PortTransformResponseData, &originalTransformResponseData);
             InstallMethodHook(bridgeClass, @selector(_doFlushMessageQueue:url:), (IMP)PortDoFlushMessageQueue, &originalDoFlushMessageQueue);
+            InstallMethodHook(bridgeClass, @selector(_dispatchMessage:), (IMP)PortDispatchMessage, &originalDispatchMessage);
         }
 
         [manager recordStage:@"蚂蚁庄园插件已注入（仅庄园 + 家庭亲密度）"];
