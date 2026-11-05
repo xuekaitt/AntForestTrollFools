@@ -1,10 +1,10 @@
 #!/bin/sh
 # 将编译产物打包为 deb + TrollFools 可用的 zip。
-# 用法：make package 或 sh scripts/package.sh v3.5.0
+# 用法：make package 或 sh scripts/package.sh v3.6.0
 set -eu
 umask 022
 
-VERSION="${1:-v3.5.0}"
+VERSION="${1:-v3.6.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DYLIB="$ROOT/build/AntManorPort-$VERSION.dylib"
 PKG="$ROOT/antforest/Package"

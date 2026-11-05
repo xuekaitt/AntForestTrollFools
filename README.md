@@ -13,7 +13,7 @@
 需要 macOS + Xcode Command Line Tools（Windows 无法编译 iOS dylib）。
 
 ```sh
-make                 # 生成 build/AntManorPort-v3.5.0.dylib（arm64 + arm64e）
+make                 # 生成 build/AntManorPort-v3.6.0.dylib（arm64 + arm64e）
 make test            # 裁剪/残留静态自检
 make package         # 生成 dist/*.deb 与 TrollFools 可用 zip
 ```
@@ -35,10 +35,10 @@ make package         # 生成 dist/*.deb 与 TrollFools 可用 zip
 
 - Runner：`macos-latest`，优先 `maxim-lobanov/setup-xcode` 选择 Xcode `15.4`；若镜像已移除该版本，自动回退到默认 Xcode。
 - 产物（Actions Run 页面 Artifacts，保留 30 天）：
-  - `AntManorPort-v3.5.0-build<run_number>-dylib`：`build/*.dylib`
-  - `AntManorPort-v3.5.0-build<run_number>-packages`：`dist/*.deb`、`dist/*-TrollFools.zip`
+  - `AntManorPort-v3.6.0-build<run_number>-dylib`：`build/*.dylib`
+  - `AntManorPort-v3.6.0-build<run_number>-packages`：`dist/*.deb`、`dist/*-TrollFools.zip`
 - `make package` 失败不会中断构建，至少保留 dylib 产物（日志会有 warning）。
-- Tag Release 使用 `softprops/action-gh-release`，依赖 workflow 中的 `permissions: contents: write`；建议 tag 与 Makefile 的 `VERSION` 保持一致（如 `v3.5.0`），否则 Release 名称与包内版本可能不同。
+- Tag Release 使用 `softprops/action-gh-release`，依赖 workflow 中的 `permissions: contents: write`；建议 tag 与 Makefile 的 `VERSION` 保持一致（如 `v3.6.0`），否则 Release 名称与包内版本可能不同。
 - deb 打包优先使用 Homebrew 的 `dpkg-deb`；不可用时 `scripts/package.sh` 自动回退到 `ar + tar`。
 - CI 只做构建与打包，不需要任何账号 cookie/token；仓库中也没有敏感配置。
 
@@ -52,7 +52,7 @@ make package  # 等同于 CI 的 Package（需先 make）
 
 ## 安装
 
-1. 用 TrollFools 注入支付宝（Bundle ID：`com.alipay.iphoneclient`），选择 `dist/com.vknote.antmanor_3.5.0_iphoneos-arm.deb` 或 `AntManorPort-v3.5.0-TrollFools.zip`；
+1. 用 TrollFools 注入支付宝（Bundle ID：`com.alipay.iphoneclient`），选择 `dist/com.vknote.antmanor_3.6.0_iphoneos-arm.deb` 或 `AntManorPort-v3.6.0-TrollFools.zip`；
 2. 打开蚂蚁庄园页面，右侧会出现叶子悬浮按钮；
 3. 点击按钮打开「蚂蚁庄园 · 家庭亲密度」面板。
 
@@ -87,7 +87,7 @@ Documents/AntManor/manor-config.json
 
 ## 调试抓包（仅本地）
 
-家庭任务接口需要真实抓包确认。v3.5.0 内置了本地抓包模块，并补充了 `_dispatchMessage:` 请求侧 Hook：
+家庭任务接口需要真实抓包确认。v3.4.0 内置了本地抓包模块，v3.5.0 补充了 `_dispatchMessage:` 请求侧 Hook；v3.6.0 用第二份抓包复核后仍未捕获家庭任务请求，因此配置继续保持为空：
 
 1. 打开蚂蚁庄园「家庭」页面，点击悬浮叶子进入面板；
 2. 面板 →「调试抓包」开关默认开启；也可点「开始抓包 60 秒」，按提示立即去操作家庭任务；
@@ -118,7 +118,8 @@ Documents/AntManor/manor-config.json
 
 - **已确认回包结构**：家庭页 `familyTasks`（`sceneCode=ANTFARM_FAMILY_TASK`）、`familyActivityIntimateNumber`、`familyDailyIntimateNumber`、`familyIntimateAwardGear`、`activityInfo.familyActivityIntimateRankList`。
 - **已确认的庄园任务接口**：`listFarmTask`、`doFarmTask`、`receiveFarmTaskAward`，请求/回包字段已与抓包对齐。
-- **仍未抓到请求侧**：家庭任务列表/执行/领奖的 `operationType`。本次抓包中家庭页只出现了 `feedAnimal`，任务数据来自容器直投，未经过 `_doFlushMessageQueue`；v3.5.0 已补 `_dispatchMessage:` Hook，需要再抓一次并在家庭页实际点击「去请客 / 去喂食 / 去捐蛋」等按钮。
+- **仍未抓到请求侧**：家庭任务列表/执行/领奖的 `operationType`。两次抓包（v3.4.0 与 v3.5.0）中家庭页只出现回包（`familyTasks`、`familyActivityIntimateNumber` 等），请求侧一条都没有；`_dispatchMessage:` Hook 也未命中，说明家庭页 RPC 不走该实例方法。面板可解析并展示家庭任务状态与 `taskId` 动作，但不会发出请求。
+- **下一步建议**：优先用 Thor/mitmproxy 做 HTTPS 层抓包（可能遇到证书固定），或改用安卓无障碍版本点击真实按钮；继续加 iOS Hook（`+dispatchJsapiInFastMode:targetNode:responseCallback:` 等）需要真机验证，v3.6.0 暂未采用。
 - **个人排名接口**：抓包只有排名线（分档阈值），没有名次与总人数接口；未抓到时不发请求。
 - **每日亲密度上限**：抓包未出现明确上限字段，保持 `0`（仅展示，不限制）。
 

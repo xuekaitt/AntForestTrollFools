@@ -125,7 +125,7 @@ static NSInteger ManorIntimacyIntegerValue(id value) {
     if (!_activityEnabled) {
         self.statusNote = [NSString stringWithFormat:@"亲密度自动化未启用（activityEnabled=false，配置：%@）", path];
     } else if (!_familyTaskOperationType.length) {
-        self.statusNote = @"家庭任务执行接口未捕获：familyTasks 回包可解析，但请求 operationType 缺失，需再抓一次请求侧";
+        self.statusNote = @"家庭任务执行/领奖接口未捕获：两次抓包（v3.5.0 前后）均只有 familyTasks 回包、无请求侧 operationType，暂不发送请求";
     } else if (!_rankOperationType.length) {
         self.statusNote = @"家庭任务接口已配置；排名数据由家庭页下发（排名接口未捕获）";
     } else {
@@ -303,6 +303,23 @@ static BOOL ManorTaskLooksLikeIntimacy(NSDictionary *task, NSString *source) {
     if ([text containsString:@"家庭"] && ([text containsString:@"任务"] || [text containsString:@"活动"])) return YES;
     if ([text containsString:@"family"] && ([text containsString:@"task"] || [text containsString:@"activity"])) return YES;
     return ManorTaskExpectedIntimacy(task) > 0;
+}
+
+// 抓包确认：familyTasks 的 taskId 就是家庭任务的动作标识，innerAction 是 H5 内部动作。
+// 该映射只用于面板展示与日志归类，不据此推断请求 operationType。
+static NSString *ManorFamilyTaskActionText(NSString *taskId, NSString *innerAction) {
+    NSString *identifier = [taskId uppercaseString];
+    NSString *action = @"";
+    if ([identifier isEqualToString:@"TREAT"]) action = @"请客吃饭";
+    else if ([identifier isEqualToString:@"HELP_FEED_PRIZE"]) action = @"帮喂家人小鸡";
+    else if ([identifier isEqualToString:@"DAILY_DONATE"]) action = @"每日捐蛋";
+    else if ([identifier isEqualToString:@"FAMILY_TREAD_MALL"]) action = @"一起运动捐步";
+    else if ([identifier isEqualToString:@"FAMILY_SHANGOU"]) action = @"领外卖红包";
+    if (!action.length) action = innerAction.length ? innerAction : taskId;
+    if (innerAction.length && ![action isEqualToString:innerAction]) {
+        return [NSString stringWithFormat:@"%@(%@)", action, innerAction];
+    }
+    return action ?: @"";
 }
 
 static NSString *ManorTaskStatus(NSDictionary *task) {
@@ -588,6 +605,7 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
 
 - (NSString *)familyTaskSummaryForList:(NSArray *)taskList {
     NSInteger total = 0, todo = 0, done = 0, received = 0, blocked = 0;
+    NSMutableArray<NSString *> *actions = [NSMutableArray array];
     for (id item in taskList) {
         if (![item isKindOfClass:NSDictionary.class]) continue;
         total += 1;
@@ -596,10 +614,20 @@ static NSString *ManorTaskStatus(NSDictionary *task) {
         if ([status isEqualToString:@"TODO"] || [status isEqualToString:@"PENDING"] || [status isEqualToString:@"INIT"]) todo += 1;
         else if ([status isEqualToString:@"FINISHED"] || [status isEqualToString:@"WAIT_RECEIVE"] || [status isEqualToString:@"WAIT_RECEIVE_AWARD"]) done += 1;
         else if ([status isEqualToString:@"RECEIVED"] || [status isEqualToString:@"COMPLETED"]) received += 1;
-        if (!ManorTaskCanDo(task)) blocked += 1;
+        BOOL canDo = ManorTaskCanDo(task);
+        if (!canDo) blocked += 1;
+        if (canDo && [status isEqualToString:@"TODO"]) {
+            NSString *identifier = [self taskIdentifierForTask:task];
+            NSString *action = ManorFamilyTaskActionText(identifier, [ManorIntimacyStringValue(task[@"innerAction"]) uppercaseString]);
+            if (action.length) [actions addObject:[NSString stringWithFormat:@"%@→%@", identifier, action]];
+        }
     }
-    return [NSString stringWithFormat:@"家庭任务 %ld 项：待完成 %ld / 待领奖 %ld / 已领取 %ld / 暂不可做 %ld",
-            (long)total, (long)todo, (long)done, (long)received, (long)blocked];
+    NSString *summary = [NSString stringWithFormat:@"家庭任务 %ld 项：待完成 %ld / 待领奖 %ld / 已领取 %ld / 暂不可做 %ld",
+                         (long)total, (long)todo, (long)done, (long)received, (long)blocked];
+    if (actions.count) {
+        summary = [summary stringByAppendingFormat:@"；可执行：%@", [actions componentsJoinedByString:@"，"]];
+    }
+    return summary;
 }
 
 - (NSInteger)intimacyGainInDictionary:(NSDictionary *)dict depth:(NSInteger)depth {
